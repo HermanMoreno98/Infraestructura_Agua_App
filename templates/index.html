@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Sistema de Etiquetado de Infraestructura - SUNASS</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1>Sistema de Etiquetado de Infraestructura</h1>
+            <span class="version">SUNASS v1.0</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="main-content">
+            <div class="controls">
+                <div class="upload-section">
+                    <h3>Cargar nueva imagen</h3>
+                    <div class="file-input-wrapper" id="dropZone">
+                        <input type="file" id="fileInput" accept="image/*">
+                        <div class="file-input-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Arrastra una imagen aquí o haz clic para seleccionar</p>
+                            <small>Formatos soportados: JPG, PNG</small>
+                        </div>
+                    </div>
+                    <div class="upload-progress">
+                        <div class="upload-progress-bar"></div>
+                    </div>
+                </div>
+
+                <div class="or-divider">
+                    <span>o</span>
+                </div>
+
+                <h2>Panel de Control</h2>
+                
+                <div class="instructions">
+                    <h3>Instrucciones</h3>
+                    <ul>
+                        <li>Haga clic y arrastre sobre la imagen para crear una caja de anotación</li>
+                        <li>Seleccione el tipo de componente y su estado físico</li>
+                        <li>Puede mover y ajustar las cajas según sea necesario</li>
+                        <li>Si no hay componentes para etiquetar, simplemente guarde para pasar a la siguiente imagen</li>
+                    </ul>
+                </div>
+
+                <form id="annotationForm" method="POST" action="/submit" onsubmit="return validateForm()">
+                    <input type="hidden" name="image_name" value="{{ image_name }}">
+                    <input type="hidden" name="image_id" value="{{ image_id }}">
+                    <input type="hidden" name="width" value="{{ width }}">
+                    <input type="hidden" name="height" value="{{ height }}">
+                    <input type="hidden" name="annotations" id="annotationsInput" value="[]">
+                    
+                    <div id="boxesInfo">
+                        <div class="no-boxes-message">
+                            No hay cajas de anotación creadas
+                        </div>
+                    </div>
+                    
+                    <button type="submit">Guardar y continuar</button>
+                </form>
+            </div>
+
+            <div id="imageContainer">
+                <img id="mainImage" src="data:image/jpeg;base64,{{ image_data }}" alt="Imagen para etiquetar">
+            </div>
+        </div>
+    </div>
+
+    <div id="feedback">¡Etiquetas guardadas correctamente!</div>
+
+    <template id="boxControlsTemplate">
+        <div class="box-info">
+            <h4>Anotación #<span class="box-number"></span></h4>
+            <div class="form-group">
+                <label>Tipo de componente:</label>
+                <div class="select-wrapper">
+                    <input type="text" class="select-search" placeholder="Buscar o agregar componente...">
+                    <div class="select-options"></div>
+                    <button type="button" class="add-component-btn">+ Agregar nuevo componente</button>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div class="form-group">
+                    <label>Estado físico:</label>
+                    <select class="estado-select" onchange="updateAnnotation(this)">
+                        <option value="">(Seleccione el estado)</option>
+                        <option value="Bueno">Bueno</option>
+                        <option value="Regular">Regular</option>
+                        <option value="Malo">Malo</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Estado operativo:</label>
+                    <select class="estado-operativo-select" onchange="updateAnnotation(this)">
+                        <option value="">(Seleccione el estado operativo)</option>
+                        <option value="Opera normal">Opera normal</option>
+                        <option value="Opera limitado">Opera limitado</option>
+                        <option value="Inoperativo">Inoperativo</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Análisis visual:</label>
+                <textarea class="analisis-input" 
+                          onchange="updateAnnotation(this)" 
+                          placeholder="Ingrese su análisis visual del componente..."
+                          rows="3"></textarea>
+            </div>
+        </div>
+    </template>
+
+    <!-- Modal para agregar nuevo componente -->
+    <div id="addComponentModal" class="modal">
+        <div class="modal-content">
+            <h3>Agregar nuevo componente</h3>
+            <input type="text" id="newComponentName" placeholder="Nombre del componente">
+            <div class="modal-buttons">
+                <button class="modal-btn secondary" onclick="closeModal()">Cancelar</button>
+                <button class="modal-btn primary" onclick="saveNewComponent()">Guardar</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Inicializar los componentes desde Flask de manera segura
+            window.components = JSON.parse('{{ components|tojson|safe }}');
+        })();
+    </script>
+    <script src="{{ url_for('static', filename='js/annotations.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/upload.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/components.js') }}"></script>
+</body>
+</html>
