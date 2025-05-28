@@ -35,24 +35,25 @@ def drive_to_direct_link(url):
 
 def get_google_credentials():
     """Obtiene las credenciales de Google desde variables de entorno o archivo."""
-    # Primero intenta desde variable de entorno
-    if os.getenv('GOOGLE_CREDENTIALS'):
-        credentials_info = json.loads(os.getenv('GOOGLE_CREDENTIALS'))
-        return service_account.Credentials.from_service_account_info(
-            credentials_info, scopes=SCOPES)
-    
-    # Luego intenta desde la ubicación de secretos de Render
-    render_credentials_path = '/etc/secrets/google-credentials.json'
-    if os.path.exists(render_credentials_path):
-        return service_account.Credentials.from_service_account_file(
-            render_credentials_path, scopes=SCOPES)
-    
-    # Finalmente, intenta desde el archivo local para desarrollo
-    if os.path.exists('credentials.json'):
-        return service_account.Credentials.from_service_account_file(
-            'credentials.json', scopes=SCOPES)
-    
-    raise Exception("No se encontraron credenciales de Google")
+    try:
+        # Primero intenta desde variable de entorno
+        if os.getenv('GOOGLE_CREDENTIALS'):
+            return json.loads(os.getenv('GOOGLE_CREDENTIALS'))
+        
+        # Luego intenta desde la ubicación de secretos de Render
+        render_credentials_path = '/etc/secrets/google-credentials.json'
+        if os.path.exists(render_credentials_path):
+            with open(render_credentials_path) as f:
+                return json.load(f)
+        
+        # Finalmente, intenta desde el archivo local para desarrollo
+        if os.path.exists('credentials.json'):
+            with open('credentials.json') as f:
+                return json.load(f)
+        
+        raise Exception("No se encontraron credenciales de Google")
+    except Exception as e:
+        raise Exception(f"Error al cargar credenciales: {str(e)}")
 
 def refresh_image_links():
     """Actualiza el diccionario de image_links desde la hoja de cálculo."""
@@ -67,27 +68,17 @@ def refresh_image_links():
 
 # Inicializar credenciales y servicios
 try:
-    creds = get_google_credentials()
+    # Get credentials as dictionary
+    credentials_dict = get_google_credentials()
     
-    # Configure SSL context for gspread
-    import ssl
-    ssl_context = ssl.create_default_context()
-    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+    # Initialize gspread client with credentials dictionary
+    sheets_client = gspread.service_account_from_dict(credentials_dict)
     
-    # Initialize the gspread client correctly
-    sheets_client = gspread.authorize(creds)
-    
-    # Configure the underlying requests session
-    sheets_client.session.verify = True
-    sheets_client.session.mount(
-        'https://',
-        requests.adapters.HTTPAdapter(
-            max_retries=3,
-            pool_connections=100,
-            pool_maxsize=100
-        )
+    # Initialize drive service
+    creds = service_account.Credentials.from_service_account_info(
+        credentials_dict, 
+        scopes=SCOPES
     )
-    
     drive_service = build('drive', 'v3', credentials=creds)
     
     # Configuración de hojas de cálculo
