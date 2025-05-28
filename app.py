@@ -26,6 +26,13 @@ SCOPES = [
     'https://www.googleapis.com/auth/drive'
 ]
 
+def drive_to_direct_link(url):
+    """Convierte una URL de Google Drive en un enlace directo."""
+    if "drive.google.com" in url:
+        file_id = url.split("/d/")[1].split("/")[0]
+        return f"https://drive.google.com/uc?export=view&id={file_id}"
+    return url
+
 def get_google_credentials():
     """Obtiene las credenciales de Google desde variables de entorno o archivo."""
     # Primero intenta desde variable de entorno
@@ -47,6 +54,17 @@ def get_google_credentials():
     
     raise Exception("No se encontraron credenciales de Google")
 
+def refresh_image_links():
+    """Actualiza el diccionario de image_links desde la hoja de cálculo."""
+    try:
+        if link_sheet is None:
+            return {}
+        rows = link_sheet.get_all_records()
+        return {row['id']: (row['file_name'], drive_to_direct_link(row['url'])) for row in rows}
+    except Exception as e:
+        print(f"Error refreshing image links: {str(e)}")
+        return {}
+
 # Inicializar credenciales y servicios
 try:
     creds = get_google_credentials()
@@ -56,9 +74,11 @@ try:
     ssl_context = ssl.create_default_context()
     ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
     
-    # Initialize the gspread client with custom SSL configuration
-    sheets_client = gspread.Client(auth=creds)
-    sheets_client.session.verify = True  # Ensure SSL verification is enabled
+    # Initialize the gspread client correctly
+    sheets_client = gspread.authorize(creds)
+    
+    # Configure the underlying requests session
+    sheets_client.session.verify = True
     sheets_client.session.mount(
         'https://',
         requests.adapters.HTTPAdapter(
@@ -74,9 +94,18 @@ try:
     sheet = sheets_client.open("Annotations").sheet1  
     link_sheet = sheets_client.open("LinksImagenes").sheet1
     components_sheet = sheets_client.open("Annotations").worksheet("Sheet2")
+    
+    # Initialize image_links
+    image_links = refresh_image_links()
+    
 except Exception as e:
     print(f"Error al inicializar servicios de Google: {str(e)}")
-    # En producción, podrías querer manejar este error de otra manera
+    # Initialize empty variables to prevent NameError
+    sheet = None
+    link_sheet = None
+    components_sheet = None
+    image_links = {}
+    drive_service = None
 
 # ID de la carpeta en Google Drive donde se subirán las imágenes
 UPLOAD_FOLDER_ID = os.getenv('GOOGLE_DRIVE_FOLDER_ID', "1Dg2RisoHoR8xabk3rzQ8EAcWslpUN3io")
@@ -111,20 +140,6 @@ def add_new_component(name):
     except Exception as e:
         print(f"Error al agregar componente: {e}")
         return False, "Error al agregar el componente"
-
-def drive_to_direct_link(url):
-    if "drive.google.com" in url:
-        file_id = url.split("/d/")[1].split("/")[0]
-        return f"https://drive.google.com/uc?export=view&id={file_id}"
-    return url
-
-def refresh_image_links():
-    """Actualiza el diccionario de image_links desde la hoja de cálculo."""
-    rows = link_sheet.get_all_records()
-    return {row['id']: (row['file_name'], drive_to_direct_link(row['url'])) for row in rows}
-
-# Inicializar image_links
-image_links = refresh_image_links()
 
 def get_latest_image_data():
     """Obtiene los datos de la última imagen agregada a LinksImagenes."""
@@ -179,6 +194,12 @@ def get_image_data(url, max_retries=3):
 @app.route('/')
 def index():
     global image_links
+    
+    # Check if Google services are initialized
+    if link_sheet is None or sheet is None or components_sheet is None:
+        return render_template("error.html", 
+                            error="Error: No se pudo conectar con Google Sheets. Por favor, contacte al administrador.")
+    
     # Obtener el ID de la imagen de la URL si existe
     image_id = request.args.get('image_id')
     
@@ -192,24 +213,41 @@ def index():
     except ValueError:
         image_id = None
     
-    if not image_id:
-        # Si no hay ID específico o es inválido, elegir uno aleatorio
-        image_id = random.choice(list(image_links.keys()))
-    
-    # Actualizar image_links antes de obtener la imagen
-    image_links = refresh_image_links()
-    
-    image_name, image_url = image_links[image_id]
-    image_data, width, height = get_image_data(image_url)
-    components = get_components()
-    
-    return render_template("index.html", 
-                         image_data=image_data,
-                         image_name=image_name,
-                         width=width,
-                         height=height,
-                         image_id=image_id,
-                         components=components)
+    try:
+        if not image_id and image_links:
+            # Si no hay ID específico o es inválido, elegir uno aleatorio
+            image_id = random.choice(list(image_links.keys()))
+        elif not image_links:
+            return render_template("error.html", 
+                                error="No hay imágenes disponibles en el sistema.")
+        
+        # Actualizar image_links antes de obtener la imagen
+        image_links = refresh_image_links()
+        
+        if image_id not in image_links:
+            return render_template("error.html", 
+                                error="La imagen solicitada no está disponible.")
+        
+        image_name, image_url = image_links[image_id]
+        image_data, width, height = get_image_data(image_url)
+        components = get_components()
+        
+        if not image_data:
+            return render_template("error.html", 
+                                error="No se pudo cargar la imagen. Por favor, intente con otra.")
+        
+        return render_template("index.html", 
+                             image_data=image_data,
+                             image_name=image_name,
+                             width=width,
+                             height=height,
+                             image_id=image_id,
+                             components=components)
+                             
+    except Exception as e:
+        print(f"Error en index: {str(e)}")
+        return render_template("error.html", 
+                            error="Ocurrió un error al cargar la página. Por favor, intente de nuevo.")
 
 @app.route('/add_component', methods=['POST'])
 def add_component():
