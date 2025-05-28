@@ -290,7 +290,12 @@ def submit():
         annotations = json.loads(request.form.get('annotations', '[]'))
         
         if not annotations:
-            return redirect(f'/?image_id={image_id}')
+            # Si no hay anotaciones, redirigir a una imagen aleatoria
+            available_ids = list(image_links.keys())
+            if available_ids:
+                random_id = random.choice([id for id in available_ids if id != image_id])
+                return redirect(f'/?image_id={random_id}')
+            return redirect('/')
         
         # Validar que todas las cajas tengan componente y estado
         for annotation in annotations:
@@ -325,7 +330,13 @@ def submit():
         # Actualizar image_links después de guardar
         image_links = refresh_image_links()
         
-        return redirect(f'/?image_id={image_id}')
+        # Redirigir a una imagen aleatoria diferente
+        available_ids = list(image_links.keys())
+        if available_ids:
+            random_id = random.choice([id for id in available_ids if id != image_id])
+            return redirect(f'/?image_id={random_id}')
+        return redirect('/')
+        
     except Exception as e:
         print(f"Error en submit: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
