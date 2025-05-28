@@ -50,15 +50,32 @@ def get_google_credentials():
 # Inicializar credenciales y servicios
 try:
     creds = get_google_credentials()
+    
+    # Configure SSL context for gspread
+    import ssl
+    ssl_context = ssl.create_default_context()
+    ssl_context.minimum_version = ssl.TLSVersion.TLSv1_2
+    
+    # Initialize the gspread client with custom SSL configuration
+    sheets_client = gspread.Client(auth=creds)
+    sheets_client.session.verify = True  # Ensure SSL verification is enabled
+    sheets_client.session.mount(
+        'https://',
+        requests.adapters.HTTPAdapter(
+            max_retries=3,
+            pool_connections=100,
+            pool_maxsize=100
+        )
+    )
+    
     drive_service = build('drive', 'v3', credentials=creds)
-    sheets_client = gspread.authorize(creds)
-
+    
     # Configuración de hojas de cálculo
     sheet = sheets_client.open("Annotations").sheet1  
     link_sheet = sheets_client.open("LinksImagenes").sheet1
     components_sheet = sheets_client.open("Annotations").worksheet("Sheet2")
 except Exception as e:
-    print(f"Error al inicializar servicios de Google: {e}")
+    print(f"Error al inicializar servicios de Google: {str(e)}")
     # En producción, podrías querer manejar este error de otra manera
 
 # ID de la carpeta en Google Drive donde se subirán las imágenes
